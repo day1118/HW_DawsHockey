@@ -1,0 +1,537 @@
+/*
+  Blink
+  Turns on an LED on for one second, then off for one second, repeatedly.
+
+  This example code is in the public domain.
+ */
+
+#include "config.h"
+#include <Servo.h>
+
+
+Servo servoF;  // create servo object to control a servo
+Servo servoB;
+Servo servoK;
+
+#define LS 60
+#define RS 82
+#define TT 40
+#define MAS 6
+
+// Pin 13 has an LED connected on most Arduino boards.
+// give it a name:
+int led1 = COLOUR_GREEN_RED_PIN;
+int led2 = COLOUR_RED_IR_PIN;
+
+int IR_LED_13 = IR_LED_13_PIN;
+int IR_LED_24 = IR_LED_24_PIN;
+
+int delayTime = 4;
+
+int BI = 0;
+int BR = 0;
+
+int GG = 0;
+int GR = 0;
+
+int IR1 = 0;
+int IR2 = 0;
+int IR3 = 0;
+int IR4 = 0;
+
+int IRD1 = 0;
+int IRD2 = 0;
+int IRD3 = 0;
+int IRD4 = 0;
+
+int IRN1 = 0;
+int IRN2 = 0;
+int IRN3 = 0;
+int IRN4 = 0;
+
+int counter = 0;
+
+int Boff = 0;
+int Bred = 0;
+int Bgreen = 0;
+
+int ss;
+
+int DEBUG_PIN_1 = 40;
+
+
+int difs[MAS];
+int difs_loc = 0;
+
+int froavg[MAS];
+int froavg_loc = 0;
+
+int ballRed = 0;
+int ballBlue = 0;
+int matRead = 0;
+
+int state = 3;
+int statetime;
+int spin = 1;
+
+
+int avgx =0;
+// the setup routine runs once when you press reset:
+void setup() {
+    // initialize the digital pin as an output.
+    pinMode(led1, OUTPUT);
+    pinMode(led2, OUTPUT);
+    pinMode(IR_LED_13_PIN, OUTPUT);
+    pinMode(IR_LED_24_PIN, OUTPUT);
+    pinMode(DEBUG_PIN_1, OUTPUT);
+    pinMode(CAMERA_SI_PIN, OUTPUT);
+    pinMode(CAMERA_CL_PIN, OUTPUT);
+
+    pinMode(MOTOR_DIRECTION_L_1_PIN, OUTPUT);
+    pinMode(MOTOR_DIRECTION_L_2_PIN, OUTPUT);
+    pinMode(MOTOR_DIRECTION_R_1_PIN, OUTPUT);
+    pinMode(MOTOR_DIRECTION_R_2_PIN, OUTPUT);
+    pinMode(MOTOR_ENABLE_L_PIN, OUTPUT);
+    pinMode(MOTOR_ENABLE_R_PIN, OUTPUT);
+
+    servoF.attach(SERVO_FRONT_PIN);  // attaches the servo on pin 9 to the servo object
+    servoB.attach(SERVO_BACK_PIN);
+    servoK.attach(SERVO_KICK_PIN);
+
+    Serial.begin(9600);      // open the serial port at 9600 bps:
+
+    DEBUG_PRINT("String worked");
+
+    analogWrite(MOTOR_ENABLE_L_PIN, 60);
+    analogWrite(MOTOR_ENABLE_R_PIN, 60);
+    digitalWrite(MOTOR_DIRECTION_L_1_PIN, HIGH);
+    digitalWrite(MOTOR_DIRECTION_L_2_PIN, LOW);
+    digitalWrite(MOTOR_DIRECTION_R_1_PIN, LOW);
+    digitalWrite(MOTOR_DIRECTION_R_2_PIN, HIGH);
+    
+    ss =1;
+}
+
+void cameraSignal()
+{
+    digitalWrite(CAMERA_SI_PIN, HIGH);
+    delayMicroseconds(delayTime);               // wait for a second
+    digitalWrite(CAMERA_CL_PIN, HIGH);
+    delayMicroseconds(delayTime);               // wait for a second
+    digitalWrite(CAMERA_SI_PIN, LOW);
+    delayMicroseconds(delayTime);
+}
+
+void cameraRead()
+{
+    cameraSignal();
+    
+    for (int i =0; i < 128; i++) {
+        digitalWrite(CAMERA_CL_PIN, HIGH);
+        digitalWrite(CAMERA_CL_PIN, LOW);
+    }
+
+    delayMicroseconds(100);
+    
+    cameraSignal();
+
+    PLOT_PRINT("CAMERA");
+    
+    float avgx = 0;
+    int startPoint = 0;
+    int conseq = 0;
+    int bestStart = 0;
+    int bestWidth = 0;
+   
+    int cam[128];
+    for(int i = 0; i < 128; i ++) {
+        digitalWrite(CAMERA_CL_PIN, HIGH);
+        int cameraSensorValue = analogRead(CAMERA_ANALOG_IN_PIN );
+        digitalWrite(CAMERA_CL_PIN, LOW);
+        PLOT_PRINT(':');
+        PLOT_PRINT(cameraSensorValue);
+        if(cameraSensorValue > 300)
+        {
+          if(conseq == 0)
+          {
+             startPoint = i;
+          }
+          conseq ++;
+          if(conseq > bestWidth)
+          {
+             bestStart = startPoint;
+             bestWidth = conseq;
+          }
+        }
+        else
+        {
+          conseq = 0;
+        }
+       }
+     
+    int center = bestStart + (bestWidth/2);
+    if(bestWidth > 10)
+    {
+      if(center > 40 && center < 88)
+      //center
+       spin = 0;
+      else if(center < 64)
+      //center
+       spin = 1;
+      //right
+    }
+    
+    avgx = i;
+    PLOT_PRINT('\n');
+    PLOT("AVGX", avgx);
+  }
+
+void drive(float dir) {
+    int l,r;
+    int dirl, dirr;
+    dirl = 1;
+    dirr = 1;
+    if (dir >= 0) {
+        l = LS + (dir * LS);
+        r = RS - (dir * RS * 1.8);
+        if (r < 0) {
+            dirr = 0;
+            r = r * -1;
+        }
+    }
+
+    if (dir < 0) {
+        l = LS + (dir * LS * 1.8);
+        r = RS - (dir * RS);
+        if (l < 0) {
+            dirl = 0;
+            l = l * -1;
+        }
+    }
+    analogWrite(MOTOR_ENABLE_L_PIN, l);
+    analogWrite(MOTOR_ENABLE_R_PIN, r);
+    digitalWrite(MOTOR_DIRECTION_L_1_PIN, !dirr);
+    digitalWrite(MOTOR_DIRECTION_L_2_PIN, dirr);
+    digitalWrite(MOTOR_DIRECTION_R_1_PIN, !dirl);
+    digitalWrite(MOTOR_DIRECTION_R_2_PIN, dirl);
+
+ 
+}
+
+void driveb(float dir) {
+    int l,r;
+    int dirl, dirr;
+    dirl = 1;
+    dirr = 1;
+    if (dir >= 0) {
+        l = LS + (dir * LS);
+        r = RS - (dir * RS * 1.8);
+        if (r < 0) {
+            dirr = 0;
+            r = r * -1;
+        }
+    }
+
+    if (dir < 0) {
+        l = LS + (dir * LS * 1.8);
+        r = RS - (dir * RS);
+        if (l < 0) {
+            dirl = 0;
+            l = l * -1;
+        }
+    }
+    analogWrite(MOTOR_ENABLE_L_PIN, l);
+    analogWrite(MOTOR_ENABLE_R_PIN, r);
+    digitalWrite(MOTOR_DIRECTION_L_1_PIN, dirr);
+    digitalWrite(MOTOR_DIRECTION_L_2_PIN, !dirr);
+    digitalWrite(MOTOR_DIRECTION_R_1_PIN, dirl);
+    digitalWrite(MOTOR_DIRECTION_R_2_PIN, !dirl);
+
+
+}
+
+
+void state_goalfind(){
+  float dir = 0;
+        if (IRD3 > 50 && IRD4 > 50 & abs(IRD3 - IRD4) < 25){
+            ss = 2;
+        }
+        if (IRD3 > TT) {
+            dir = 0.4 + 0.6 * (float) (IRD3 - TT) / (1000-TT);
+        } else if (IRD4 > TT) {
+            dir = -1.f * (0.4 + 0.6 * (float) (IRD4 - TT) / (1000-TT));
+        }
+        driveb(dir);
+
+  if (matRead > 8){
+   state= 3;
+    statetime = millis(); 
+  }
+
+  PLOT("DIR", dir);
+}
+
+void state_drive(){
+     switch (ss) {
+    case 1:{
+          float dir = 0;
+        if (IRD1 > 50 && IRD2 > 50 & abs(IRD1 - IRD2) < 25){
+            ss = 2;
+        }
+        if (IRD1 > TT) {
+            dir = 0.4 + 0.6 * (float) (IRD1 - TT) / (1000-TT);
+        } else if (IRD2 > TT) {
+            dir = -1.f * (0.4 + 0.6 * (float) (IRD2 - TT) / (1000-TT));
+        }
+        drive(dir);
+
+        break;}
+
+    case 2:
+        if (IRD2 < 90) {
+            ss = 1;
+        } else {
+            drive(-1);
+        }
+        break;
+
+    }  
+    
+    if (ballRed > 4 || ballBlue > 4){
+        servoF.write(SERVO_FRONT_DOWN);
+    } else {
+        servoB.write(SERVO_BACK_DOWN);
+        servoF.write(SERVO_FRONT_UP);
+    }
+    if (ballRed > 8){
+      
+       servoF.write(SERVO_FRONT_DOWN);
+        state=2;
+       ss = 1; 
+    }
+  
+    if (ballBlue > 8){
+       servoB.write(SERVO_BACK_UP);
+    }
+}
+
+void state_rotate(){
+    if (millis() > statetime + 1000){
+      driveb(0); 
+    } else {
+    cameraRead();
+    if spin{
+    drive(1);
+    }
+    }
+    
+}
+
+void readIR(){
+   digitalWrite(IR_LED_13, HIGH);   // turn the LED on
+    delay(delayTime);
+    IR1 = analogRead(IR_1_ANALOG_IN_PIN);
+    IR3 = analogRead(IR_3_ANALOG_IN_PIN);
+    digitalWrite(IR_LED_13, LOW);   // turn the LED on
+
+
+
+    digitalWrite(IR_LED_24, HIGH);   // turn the LED on
+    delay(delayTime);
+    IR2 = analogRead(IR_2_ANALOG_IN_PIN);
+    IR4 = analogRead(IR_4_ANALOG_IN_PIN);
+    digitalWrite(IR_LED_24, LOW);   // turn the LED on
+
+    delay(delayTime);
+
+    IRN1 = analogRead(IR_1_ANALOG_IN_PIN);
+    IRN2 = analogRead(IR_2_ANALOG_IN_PIN);
+    IRN3 = analogRead(IR_3_ANALOG_IN_PIN);
+    IRN4 = analogRead(IR_4_ANALOG_IN_PIN);
+    
+    IRD1 =  IR1 - IRN1;
+    IRD2 =  IR2 - IRN2;
+    IRD3 =  IR3 - IRN3;
+    IRD4 =  IR4 - IRN4;
+}
+
+void readBall(){
+ Boff = analogRead(BALL_ANALOG_IN_PIN);
+    delay(delayTime);
+    
+    digitalWrite(COLOUR_RED_IR_PIN, HIGH);
+    
+    delay(delayTime);
+    Bred = analogRead(BALL_ANALOG_IN_PIN);
+    
+    
+    digitalWrite(COLOUR_RED_IR_PIN, LOW);
+    
+    digitalWrite(COLOUR_GREEN_RED_PIN, HIGH);    
+    
+    delay(delayTime);
+    Bgreen = analogRead(BALL_ANALOG_IN_PIN);
+    digitalWrite(COLOUR_GREEN_RED_PIN, LOW);    
+    
+    
+}
+
+void readGround(){
+  
+      digitalWrite(led2, LOW);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(led1, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(delayTime);               // wait for a second
+    BI = analogRead(BALL_ANALOG_IN_PIN);
+    GR = analogRead(GROUND_ANALOG_IN_PIN);
+
+    digitalWrite(led1, LOW);    // turn the LED off by making the voltage LOW
+    digitalWrite(led2, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(delayTime);               // wait for a second
+    BR = analogRead(BALL_ANALOG_IN_PIN);
+    GG = analogRead(GROUND_ANALOG_IN_PIN);
+    digitalWrite(led1, LOW);    // turn the LED off by making the voltage LOW
+    digitalWrite(led2, LOW);   // turn the LED on (HIGH is the voltage level)
+    PLOT("BI", BI);
+    PLOT("GR", GR);
+    PLOT("BR", BR);
+    PLOT("GG", GG);  
+    PLOT("GD", GG-GR);
+}
+
+// the loop routine runs over and over again forever:
+void loop() {
+
+/*    digitalWrite(led2, LOW);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(led1, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(delayTime);               // wait for a second
+    BI = analogRead(BALL_ANALOG_IN_PIN);
+    GR = analogRead(GROUND_ANALOG_IN_PIN);
+
+    digitalWrite(led1, LOW);    // turn the LED off by making the voltage LOW
+    digitalWrite(led2, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(delayTime);               // wait for a second
+    BR = analogRead(BALL_ANALOG_IN_PIN);
+    GG = analogRead(GROUND_ANALOG_IN_PIN);
+    digitalWrite(led1, LOW);    // turn the LED off by making the voltage LOW
+    digitalWrite(led2, LOW);   // turn the LED on (HIGH is the voltage level)
+*/
+    readIR();
+
+    
+    difs[difs_loc] = IRD1-IRD2;
+    froavg[froavg_loc] = (IRD1 + IRD2) / 2;
+    
+    difs_loc = (difs_loc < MAS-1) ? difs_loc+1 : 0;
+    froavg_loc = (froavg_loc < MAS-1) ? froavg_loc +1: 0;
+    
+    int sum = 0;
+    int sumf = 0;
+    for (int i =0; i < MAS; i++){
+       sum += difs[i];
+       sumf += froavg[i];
+    }
+    
+
+       PLOT("DIFFS", sum/MAS); 
+       PLOT("FROAVG", sumf/MAS);
+
+    
+    
+    readBall();
+    if (Bgreen > 300){
+        if (Bred > 220) {
+          ballRed += 2;
+          //Red Found
+        } else {
+          ballBlue += 2;
+          //Blue Found
+        }    
+    }
+    ballRed -= 1;
+    ballBlue -= 1;
+    
+    if (GG-GR > 20){
+       matRead += 2;
+    }
+    
+    matRead -= 1;
+    matRead = (matRead > 10) ? 10 : matRead;
+    matRead = (matRead < 0 ) ? 0  : matRead;
+    
+    
+    readGround();
+    
+    ballRed = (ballRed < 0) ? 0 : ballRed;
+    ballBlue= (ballBlue < 0) ? 0 :ballBlue;
+    ballRed = (ballRed > 10) ? 10 : ballRed;
+    ballBlue = (ballBlue > 10) ? 10: ballBlue;  
+    
+    
+    PLOT("BALLBLUE", ballBlue);
+    PLOT("BALLRED", ballRed);
+    
+    PLOT("BOFF", Boff);
+    PLOT("BRED", Bred);
+    PLOT("BGREEN", Bgreen);
+    
+    switch (state){
+    case 1:
+      state_drive();
+    break;
+    case 2:
+      state_goalfind();
+      break;
+    case 3:
+      state_rotate();
+      break;
+    }
+    PLOT("STATE", state);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    PLOT("IR1", IR1);
+    PLOT("IR2", IR2);
+    PLOT("IR3", IR3);
+    PLOT("IR4", IR4);
+    PLOT("IRN1", IRN1);
+    PLOT("IRD1", IRD1);
+    PLOT("IRN2", IRN2);
+    PLOT("IRD2", IRD2);
+    PLOT("IRN3", IRN3);
+    PLOT("IRD3", IRD3);
+    PLOT("IRN4", IRN4);
+    PLOT("IRD4", IRD4);
+    /*digitalWrite(MOTOR_ENABLE_R_PIN, HIGH);
+    digitalWrite(MOTOR_DIRECTION_R_1_PIN, HIGH);
+    digitalWrite(MOTOR_DIRECTION_R_2_PIN, LOW);*/
+
+    /*servoK.write(SERVO_KICK_UP);
+    delay(1000);
+    servoF.write(SERVO_FRONT_DOWN);
+    servoB.write(SERVO_BACK_DOWN);
+    delay(1000);
+    servoF.write(SERVO_FRONT_UP);
+    servoB.write(SERVO_BACK_UP);
+    delay(1000);
+    servoK.write(SERVO_KICK_DOWN);
+    delay(1000);*/
+}
